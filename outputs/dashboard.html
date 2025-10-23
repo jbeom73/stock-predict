@@ -1,0 +1,163 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1"/>
+<title>pattern-ai · 로컬 대시보드</title>
+<style>
+:root {
+  --bg:#0b0c10; --fg:#e9eef2; --muted:#9da7b3; --card:#101218; --border:#1a2030; --accent:#6ee7b7;
+}
+* { box-sizing: border-box; }
+body { margin:0; background:var(--bg); color:var(--fg); font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,'Noto Sans KR',sans-serif; }
+.wrap { max-width:1280px; margin:0 auto; padding:22px 16px 44px; }
+h1 { margin:0 0 16px; font-size:24px; font-weight:800; }
+.badge { margin-left:10px; background:#1f2937; color:#cbd5e1; font-size:12px; padding:3px 8px; border-radius:999px; }
+.row { display:grid; gap:16px; }
+.row2 { grid-template-columns:1fr 1fr; }
+.row3 { grid-template-columns:1fr 1fr; }
+@media (min-width: 1100px) { .row3 { grid-template-columns:1.4fr 1fr; } }
+.card { background:var(--card); border:1px solid var(--border); border-radius:14px; padding:12px 12px; }
+.card h2 { font-size:16px; margin:0 0 10px; }
+.small { color:var(--muted); font-size:13px; }
+img { max-width:100%; height:auto; display:block; border-radius:10px; }
+.img-missing { color:var(--muted); font-size:13px; padding:18px 6px; }
+.topbar { display:flex; align-items:center; gap:10px; margin-bottom:10px; }
+input[type=text] { background:#0f1420; color:#e5edf6; border:1px solid #22304a; border-radius:10px; padding:10px 12px; outline:none; width:140px; }
+.btn { background:#1f2937; color:#e5edf6; border:1px solid #334155; padding:9px 12px; border-radius:10px; cursor:pointer; }
+.btn:hover { background:#263244; }
+.progress {
+  height:8px; background:#0e1624; border-radius:999px; overflow:hidden; position:relative; flex:1;
+}
+.progress > .bar {
+  position:absolute; left:-40%; top:0; bottom:0; width:40%;
+  background:linear-gradient(90deg,#34d399,#60a5fa);
+  animation: slide 1.2s infinite ease-in-out;
+}
+.progress.hidden { display:none; }
+@keyframes slide {
+  0% { left:-40%; } 50% { left:60%; } 100% { left:100%; }
+}
+table { width:100%; border-collapse: collapse; font-size:14px; }
+th, td { padding:10px 8px; border-bottom:1px solid #1d2536; text-align:left; }
+tbody tr {}
+tbody tr:hover { background:#131a26; cursor:pointer; }
+.footer { margin-top:12px; color:var(--muted); font-size:12px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>pattern-ai · 로컬 대시보드 <span class="badge">W 60</span></h1>
+
+  <div class="topbar">
+    <label class="small">티커</label>
+    <input type="text" id="ticker" value="005930" />
+    <button class="btn" id="btnRun">조회</button>
+    <div class="progress hidden" id="prog"><div class="bar"></div></div>
+  </div>
+
+  <div class="row row2">
+    <div class="card">
+      <h2>유사 패턴 오버레이 (Top-3)</h2>
+      <img id="overlay_main" src="overlay_local_005930_W60_K3.png?v=1760200099" alt="overlay_main" loading="lazy"/>
+      <div class="small">타깃 과거: 실선 · 비교과거: 실선 · 비교미래: 점선 (t=0 연속)</div>
+    </div>
+    <div class="card">
+      <h2>미래 변동 예측 곡선 (H=20)</h2>
+      <div class="img-missing">(forecast_curve 이미지 없음)</div>
+      
+      <div class="small">예측선: 가중평균(소프트맥스 β), 밴드/히스토그램은 outputs 폴더에 있으면 자동 노출</div>
+    </div>
+  </div>
+
+  <div class="row row3" style="margin-top:16px;">
+    <div class="card">
+      <h2>유사 패턴 Top-3</h2>
+      <table>
+        <thead><tr><th>순위</th><th>티커</th><th>기간</th><th>유사도/거리</th></tr></thead>
+        <tbody id="tblBody">
+          <!-- 파이썬이 rows_json으로 채움 -->
+        </tbody>
+      </table>
+      <div class="small">행 클릭 → 오른쪽 박스에 상세 비교차트 표시</div>
+    </div>
+    <div class="card">
+      <h2>상세 비교차트</h2>
+      <div id="detailBox">
+        <img id="match_overlay" src="overlay_local_005930_match1.png?v=1760200099" alt="match_overlay" loading="lazy"/>
+      </div>
+    </div>
+  </div>
+
+  <div class="card" style="margin-top:16px;">
+    <h2>예측 변동 히스토그램</h2>
+    <div class="img-missing">(히스토그램 없음)</div>
+  </div>
+
+  <div class="footer">생성시각 2025-10-12 01:58:00  ·  경로 기준: <code>outputs/</code></div>
+</div>
+
+<script>
+// 표 데이터 주입
+const ROWS = [{"rank": 1, "tkr": "9320", "s": "2017-11-02", "e": "2018-01-29", "score": "sim=0.877584"}, {"rank": 2, "tkr": "3620", "s": "2020-03-24", "e": "2020-06-19", "score": "sim=0.883898"}, {"rank": 3, "tkr": "30190", "s": "2018-03-14", "e": "2018-06-11", "score": "sim=0.874820"}];
+
+// 테이블 렌더
+function renderTable() {
+  const tb = document.getElementById('tblBody');
+  tb.innerHTML = '';
+  if (!ROWS || ROWS.length === 0) {
+    const tr = document.createElement('tr');
+    tr.innerHTML = '<td colspan="4" class="small">CSV 없음</td>';
+    tb.appendChild(tr);
+    return;
+  }
+  for (const r of ROWS) {
+    const tr = document.createElement('tr');
+    tr.dataset.rank = r.rank;
+    tr.innerHTML = `<td>${r.rank}</td><td>${r.tkr}</td><td>${r.s} ~ ${r.e}</td><td>${r.score}</td>`;
+    tr.addEventListener('click', () => showDetail(r.rank));
+    tb.appendChild(tr);
+  }
+}
+renderTable();
+
+// 상세 비교 이미지 교체
+function showDetail(rank) {
+  const box = document.getElementById('detailBox');
+  const t = '005930';
+  const name = `overlay_local_${t}_match${rank}.png`;
+  const url = `./${name}?v=${Date.now()}`;
+  const img = new Image();
+  img.onload = () => {
+    box.innerHTML = '';
+    img.style.maxWidth = '100%';
+    img.style.borderRadius = '10px';
+    box.appendChild(img);
+  };
+  img.onerror = () => {
+    box.innerHTML = '<div class="img-missing">(상세 비교 이미지 없음)</div>';
+  };
+  img.src = url;
+}
+
+// 진행바 제어
+const prog = document.getElementById('prog');
+function startProgress() { prog.classList.remove('hidden'); }
+function stopProgress()  { prog.classList.add('hidden'); }
+
+// 조회 버튼: 새로 생성된 파일을 바로 보이도록 이미지 src에 캐시버스터만 갱신
+document.getElementById('btnRun').addEventListener('click', () => {
+  startProgress();
+  const imgs = document.querySelectorAll('img');
+  let remain = imgs.length;
+  if (remain === 0) { stopProgress(); return; }
+  imgs.forEach(img => {
+    const base = img.src.split('?')[0];
+    img.onload = () => { if (--remain === 0) stopProgress(); };
+    img.onerror = () => { if (--remain === 0) stopProgress(); };
+    img.src = base + '?v=' + Date.now();
+  });
+});
+</script>
+</body>
+</html>

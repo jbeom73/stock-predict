@@ -1,0 +1,8 @@
+{
+  "target": "005930",
+  "window": 60,
+  "beta": 22,
+  "sim_cutoff": 0.9,
+  "n_neighbors": 2,
+  "generated_at": "2025-10-11 19:14:58"
+}

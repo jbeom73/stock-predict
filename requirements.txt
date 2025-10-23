@@ -1,0 +1,12 @@
+pykrx
+pandas
+numpy
+pyarrow
+ta
+faiss-cpu
+fastdtw
+tslearn
+scikit-learn
+fastapi
+uvicorn
+pydantic

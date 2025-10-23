@@ -1,0 +1,134 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1"/>
+<title>pattern-ai · 로컬 대시보드 (W 60)</title>
+<style>
+:root {
+  --bg:#0b0c10; --fg:#e9eef2; --muted:#98a2b3; --card:#111318; --border:#1d2230; --ok:#3dd6c6;
+}
+html,body { background:var(--bg); color:var(--fg); font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,'Noto Sans KR',sans-serif; }
+.wrap { max-width:1280px; margin:0 auto; padding:26px 18px 80px; }
+h1 { margin:0 0 12px; font-size:28px; font-weight:800; letter-spacing:-0.3px; }
+.badge { display:inline-block; margin-left:8px; font-size:13px; background:#153; color:#c3f9ef; padding:3px 8px; border-radius:999px; }
+.row { display:grid; grid-template-columns:1fr 1fr; gap:18px; margin-top:14px; }
+.card { background:var(--card); border:1px solid var(--border); border-radius:14px; padding:14px 14px 18px; }
+.card h2 { margin:0 0 10px; font-size:18px; }
+small.muted { color:var(--muted); }
+hr.soft { border:0; border-top:1px solid var(--border); margin:12px 0; }
+img.block { display:block; width:100%; height:auto; border-radius:10px; background:#090a0f; }
+.table { width:100%; border-collapse:collapse; }
+.table th, .table td { padding:10px 12px; border-bottom:1px dashed #222735; font-size:14px; }
+.table th { color:#cbd5e1; text-align:left; }
+.table tr:hover td { background:#0f121a; }
+.progress { height:10px; border-radius:999px; background:#0e1726; overflow:hidden; }
+.progress > b { display:block; height:100%; width:100%; background:linear-gradient(90deg, #54e1d6, #44c3b8); }
+footer { color:var(--muted); font-size:13px; margin-top:18px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>pattern-ai · 로컬 대시보드 <span class="badge">W 60</span></h1>
+
+  <div class="row">
+    <div class="card">
+      <h2>유사 패턴 오버레이 (Top-3)</h2>
+      <img id="img-overlay-main" class="block" alt="overlay main"/>
+      <small class="muted">타깃 과거: 실선 · 비교과거: 실선 · 비교미래: 점선 (t=0 연속)</small>
+    </div>
+    <div class="card">
+      <h2>미래 변동 예측 곡선 (H=20)</h2>
+      <img id="img-forecast" class="block" alt="forecast curve"/>
+      <small class="muted">예측선: 가중평균(소프트맥스 β) · 밴드: P10–P90 / P25–P75 (없으면 자동 숨김)</small>
+    </div>
+  </div>
+
+  <div class="row" style="margin-top:18px;">
+    <div class="card">
+      <h2>유사 패턴 Top-3</h2>
+      <table class="table" id="tbl-matches">
+        <thead>
+          <tr><th style="width:70px">순위</th><th style="width:120px">티커</th><th>기간</th><th style="width:160px">유사도/거리</th></tr>
+        </thead>
+        <tbody></tbody>
+      </table>
+      <small class="muted">행 클릭 → 오른쪽 상자에 상세 비교차트 표시</small>
+    </div>
+    <div class="card">
+      <h2>상세 비교차트</h2>
+      <img id="img-match-detail" class="block" alt="match overlay"/>
+    </div>
+  </div>
+
+  <footer id="ft"></footer>
+</div>
+
+<script>
+// 주입된 데이터(파이썬에서 직렬화)
+const DASH = {"target": "005930", "window": 60, "horizon": 20, "k_repr": 3, "generated_at": "2025-10-12 01:36", "paths": {"overlay_main": "overlay_local_005930_W60_K3.png", "forecast_curve": null, "out_dir": "D:\\python\\pattern-ai\\outputs"}, "matches": [{"rank": 1, "ticker": "009320", "start": "2017-11-02", "end": "2018-01-29", "sim": "0.877584", "corr": "0.938", "lag": "0", "hybrid": "0.932", "score": "0.877584"}, {"rank": 2, "ticker": "003620", "start": "2020-03-24", "end": "2020-06-19", "sim": "0.883898", "corr": "0.929", "lag": "0", "hybrid": "0.932", "score": "0.883898"}, {"rank": 3, "ticker": "030190", "start": "2018-03-14", "end": "2018-06-11", "sim": "0.874820", "corr": "0.930", "lag": "0", "hybrid": "0.929", "score": "0.874820"}], "match_imgs": {"1": "overlay_local_005930_match1.png", "2": "overlay_local_005930_match2.png", "3": "overlay_local_005930_match3.png"}};
+
+// 경로 헬퍼: outputs/ 아래의 파일명만 왔으니 상대경로로 조합
+function rpath(name) {
+  if (!name) return null;
+  return name; // HTML과 같은 폴더(outputs/)에 생성되므로 파일명만 사용
+}
+
+function setImg(id, name) {
+  const el = document.getElementById(id);
+  if (!el) return;
+  if (name) {
+    el.src = rpath(name);
+    el.style.display = '';
+  } else {
+    el.remove(); // 이미지 없으면 섹션 자체 정리
+  }
+}
+
+function fillMatchesTable(matches) {
+  const tb = document.querySelector('#tbl-matches tbody');
+  tb.innerHTML = '';
+  if (!matches || matches.length === 0) {
+    const tr = document.createElement('tr');
+    const td = document.createElement('td');
+    td.colSpan = 4;
+    td.textContent = '매치 데이터가 없습니다.';
+    tr.appendChild(td);
+    tb.appendChild(tr);
+    return;
+  }
+  for (const m of matches) {
+    const tr = document.createElement('tr');
+    const rank  = m.rank ?? '';
+    const tkr   = m.ticker ?? '';
+    const s     = m.start ?? '';
+    const e     = m.end ?? '';
+    const score = m.score ?? '';
+    tr.innerHTML = `<td>${rank}</td><td>${tkr}</td><td>${s} ~ ${e}</td><td>${score}</td>`;
+    tr.style.cursor = 'pointer';
+    tr.addEventListener('click', () => {
+      const img = DASH.match_imgs[String(rank)];
+      setImg('img-match-detail', img || null);
+    });
+    tb.appendChild(tr);
+  }
+  // 첫 행 자동 선택
+  const first = matches[0];
+  if (first) {
+    const img = DASH.match_imgs[String(first.rank)];
+    setImg('img-match-detail', img || null);
+  }
+}
+
+(function init() {
+  document.getElementById('ft').textContent =
+    `생성시각 ${DASH.generated_at} · 경로 기준: outputs/ · 이미지/CSV가 없으면 해당 섹션은 비워집니다.`;
+
+  setImg('img-overlay-main', DASH.paths.overlay_main);
+  setImg('img-forecast', DASH.paths.forecast_curve);
+
+  fillMatchesTable(DASH.matches);
+})();
+</script>
+</body>
+</html>
